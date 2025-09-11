@@ -7,7 +7,7 @@ license = { text = "MIT" }
 authors = [{ name = "zwldarren", email = "zwldarren@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = [
-    "akshare-one>=0.3.10",
+    "akshare-one>=0.3.11",
     "fastmcp>=2.11.3",
     "uvicorn>=0.35.0",
 ]
