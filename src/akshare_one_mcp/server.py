@@ -1,10 +1,12 @@
 from datetime import datetime
+from functools import lru_cache
 from typing import Annotated, Literal
 
 import akshare as ak
 import akshare_one as ako
 from akshare_one import indicators
 from fastmcp import FastMCP
+import pandas as pd
 from pydantic import Field
 
 
@@ -147,6 +149,71 @@ def get_hist_data(
                 temp.append(indicator_df)
         if temp:
             df = df.join(temp)
+    if recent_n is not None:
+        df = df.tail(recent_n)
+    return df.to_json(orient="records") or "[]"
+
+
+@mcp.tool
+def get_ma(
+    symbol: Annotated[str, Field(description="Stock symbol/ticker (e.g. '000001')")],
+    windows: Annotated[
+        list[int], Field(description="SMA windows (e.g. [5, 20, 60])")
+    ] = [5, 20, 60],
+    interval: Annotated[
+        Literal["minute", "hour", "day", "week", "month", "year"],
+        Field(description="Time interval"),
+    ] = "day",
+    interval_multiplier: Annotated[
+        int, Field(description="Interval multiplier", ge=1)
+    ] = 1,
+    start_date: Annotated[
+        str, Field(description="Start date in YYYY-MM-DD format")
+    ] = "1970-01-01",
+    end_date: Annotated[
+        str, Field(description="End date in YYYY-MM-DD format")
+    ] = "2030-12-31",
+    adjust: Annotated[
+        Literal["none", "qfq", "hfq"], Field(description="Adjustment type")
+    ] = "none",
+    source: Annotated[
+        Literal["eastmoney", "eastmoney_direct", "sina"],
+        Field(description="Data source"),
+    ] = "eastmoney",
+    recent_n: Annotated[
+        int | None, Field(description="Number of most recent records to return", ge=1)
+    ] = 100,
+) -> str:
+    """Get historical data with SMA (moving averages) for given windows."""
+    df = ako.get_hist_data(
+        symbol=symbol,
+        interval=interval,
+        interval_multiplier=interval_multiplier,
+        start_date=start_date,
+        end_date=end_date,
+        adjust=adjust,
+        source=source,
+    )
+    if df.empty:
+        return "[]"
+
+    cleaned_windows = [w for w in windows if isinstance(w, int) and w > 0]
+    if cleaned_windows:
+        temp = []
+        for window in dict.fromkeys(cleaned_windows):
+            indicator_df = indicators.get_sma(df, window=window)
+            if hasattr(indicator_df, "columns"):
+                cols = list(indicator_df.columns)
+                if len(cols) == 1 and str(window) not in str(cols[0]):
+                    indicator_df = indicator_df.rename(
+                        columns={cols[0]: f"SMA_{window}"}
+                    )
+            else:
+                indicator_df = indicator_df.rename(f"SMA_{window}").to_frame()
+            temp.append(indicator_df)
+        if temp:
+            df = df.join(temp)
+
     if recent_n is not None:
         df = df.tail(recent_n)
     return df.to_json(orient="records") or "[]"
